@@ -11,6 +11,7 @@ Userscript Tampermonkey (`pec-comuni-italiani.user.js`) che, eseguito su `indice
 | `pec-comuni-italiani.user.js` | Lo script (unico file di codice) |
 | `README.md` | Istruzioni per gli utenti |
 | `CLAUDE.md` | Questo file: contesto e regole per le istanze di Claude |
+| `GRAPH.md` | Grafo del codice: flusso, chi chiama chi, indice delle funzioni con numeri di riga, strutture dati |
 
 ## Come funziona lo script
 1. Pulsante fisso in basso a destra su ogni pagina di `indicepa.gov.it`.
@@ -34,9 +35,10 @@ Userscript Tampermonkey (`pec-comuni-italiani.user.js`) che, eseguito su `indice
 - A ogni modifica del codice aumenta `@version` (gli utenti si aggiornano tramite `@updateURL`).
 - Accesso ai campi sempre con `campo(oggetto, 'Nome')` (indipendente da maiuscole/minuscole): IndicePA può cambiare l'intestazione delle colonne.
 - Prima di pubblicare: `node --check pec-comuni-italiani.user.js`.
+- Per orientarsi nel codice leggi prima `GRAPH.md`; se aggiungi, sposti o rinomini funzioni, aggiorna `GRAPH.md` nello stesso commit.
 
 ## Stato
 - v1.0.0: prima versione. La logica è stata provata con dati di esempio che riproducono le colonne dei dataset; la prima esecuzione sui dati reali va verificata (conteggio comuni atteso circa 7.900).
 
 ## Da fare
-- File «graph» per la lettura del codice (previsto).
+- Verificare la prima esecuzione sui dati reali.
