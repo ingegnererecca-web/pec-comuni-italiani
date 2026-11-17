@@ -41,10 +41,9 @@ Dettagli e numeri di riga in `GRAPH.md`. In sintesi:
 - Per orientarsi nel codice leggi prima `GRAPH.md`; se aggiungi, sposti o rinomini funzioni, aggiorna `GRAPH.md` nello stesso commit.
 
 ## Stato
-- v1.1.0 (17/11/2026): aggiunte le Scuole statali (`Codice_MIUR`), file `PEC_Scuole_italiane.xlsx`; codice unificato con `CATEGORIE` + `elabora()`. Prima estrazione delle scuole da verificare.
+- v1.1.0 (17/11/2026): aggiunte le Scuole statali (`Codice_MIUR`), file `PEC_Scuole_italiane.xlsx`; codice unificato con `CATEGORIE` + `elabora()`. Prima estrazione reale (17/11/2026): 8.039 scuole, tutte con domicilio digitale, 8.149 PEC.
 - Prima estrazione reale dei Comuni (17/11/2026, workflow): 7.893 comuni, tutti con domicilio digitale, 19.167 PEC. 0 domicili a livello UO: da verificare se è un dato reale o un nome di colonna diverso.
 - v1.0.0: prima versione (solo Comuni) e workflow GitHub Actions manuale.
 
 ## Da fare
-- Verificare la prima estrazione delle Scuole (atteso: circa 8.000 istituti statali).
 - Verificare i domicili digitali delle UO (colonne del dataset).
