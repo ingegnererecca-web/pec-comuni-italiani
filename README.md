@@ -9,7 +9,20 @@ Per ogni comune lo script raccoglie:
 
 I doppioni vengono eliminati: ogni indirizzo compare una sola volta per comune.
 
-## Installazione
+## Senza estensione: il file Excel pronto su GitHub
+
+Non serve installare nulla. Il file viene creato sui server di GitHub, solo quando lo chiedi tu.
+
+1. Apri la scheda **[Actions](../../actions/workflows/estrai-pec.yml)** del repository.
+2. Premi **«Run workflow»** e poi il pulsante verde **«Run workflow»** (ramo `main`).
+3. Dopo qualche minuto l'esecuzione diventa verde.
+4. Scarica l'Excel da **[`dati/PEC_Comuni_italiani.xlsx`](dati/PEC_Comuni_italiani.xlsx)**: premi il pulsante di download in alto a destra. I numeri dell'ultima estrazione sono in [`dati/riepilogo.md`](dati/riepilogo.md).
+
+Il file si trova anche tra gli «Artifacts» di ogni esecuzione, conservati per 30 giorni. Il pulsante «Run workflow» compare solo a chi ha i permessi di scrittura sul repository.
+
+## Con Tampermonkey (nel browser)
+
+### Installazione
 
 1. Installa l'estensione [Tampermonkey](https://www.tampermonkey.net/) in Chrome.
 2. Abilita l'esecuzione degli script: `chrome://extensions` → Tampermonkey → **Dettagli** → attiva **«Consenti script utente»** (Chrome 138 e successivi).
@@ -17,7 +30,7 @@ I doppioni vengono eliminati: ogni indirizzo compare una sola volta per comune.
 
 Gli aggiornamenti arrivano da soli: Tampermonkey controlla periodicamente questo repository.
 
-## Uso
+### Uso
 
 1. Apri [indicepa.gov.it](https://indicepa.gov.it).
 2. In basso a destra premi **«Estrai PEC dei Comuni»**.
@@ -52,6 +65,7 @@ Gli indirizzi sono pubblicati per legge (art. 6-ter del D.Lgs. 82/2005, Codice d
 
 ## Note tecniche
 
+- Le due versioni usano la stessa logica: `pec-comuni-italiani.user.js` (browser) e `scripts/estrai-pec.mjs` (Node, usata da GitHub Actions con `.github/workflows/estrai-pec.yml`).
 - Lo script legge solo dati pubblici: non invia nulla e non scrive su IndicePA.
 - Un ente è considerato «Comune» se ha la categoria IPA `L6` e un codice IPA del tipo `c_xxxx` oppure una denominazione che inizia con «Comune di». Unioni e consorzi di comuni sono esclusi.
 - Se IndicePA cambia i dataset o i nomi delle colonne, lo script può segnalare un errore nel riquadro: in quel caso apri una *issue*.

@@ -1,0 +1,50 @@
+name: Estrai PEC dei Comuni
+
+# Parte solo a mano: scheda «Actions» → «Estrai PEC dei Comuni» → «Run workflow».
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: estrai-pec
+  cancel-in-progress: false
+
+jobs:
+  estrai:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Scarica il repository
+        uses: actions/checkout@v4
+
+      - name: Prepara Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installa le dipendenze
+        run: npm install --no-save --no-audit --no-fund xlsx@0.18.5
+
+      - name: Estrai le PEC da IndicePA
+        run: node scripts/estrai-pec.mjs dati
+
+      - name: Salva il file Excel nel repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add dati/PEC_Comuni_italiani.xlsx dati/riepilogo.md
+          if git diff --cached --quiet; then
+            echo "Nessuna modifica rispetto all'ultima estrazione."
+          else
+            git commit -m "Estrazione PEC dei Comuni del $(TZ=Europe/Rome date +%d/%m/%Y)"
+            git push
+          fi
+
+      - name: Allega il file Excel all'esecuzione
+        uses: actions/upload-artifact@v4
+        with:
+          name: PEC_Comuni_italiani
+          path: dati/PEC_Comuni_italiani.xlsx
+          retention-days: 30

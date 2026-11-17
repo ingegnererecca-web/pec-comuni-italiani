@@ -1,4 +1,4 @@
-# Grafo del codice – `pec-comuni-italiani.user.js`
+# Grafo del codice – `pec-comuni-italiani.user.js` e `scripts/estrai-pec.mjs`
 
 Mappa del codice: serve a orientarsi senza rileggere tutto il file. Riferita alla **v1.0.0**. I numeri di riga vanno aggiornati a ogni modifica, insieme a `@version`.
 
@@ -104,3 +104,17 @@ livello ∈ { 'Ente – domicilio digitale', 'AOO – domicilio digitale',
 - **ID delle risorse**: se IndicePA ricrea un dataset cambia l'ID, quindi si aggiorna `RISORSE` (riga 35).
 - **Filtro dei Comuni** (riga 150): `L6` comprende anche unioni e consorzi, che vengono esclusi dalla regola sul codice IPA / denominazione.
 - **Memoria**: il dataset Unità Organizzative è il più grande; viene letto per intero in memoria.
+
+## 8. Versione GitHub Actions (`scripts/estrai-pec.mjs`)
+
+```mermaid
+flowchart TD
+    W([Actions → «Run workflow»]) --> C[checkout + Node 20 + npm install xlsx]
+    C --> M["main() in scripts/estrai-pec.mjs<br/>stessi passi 1–4 di avvia()"]
+    M --> F["dati/PEC_Comuni_italiani.xlsx<br/>dati/riepilogo.md"]
+    F --> G[commit del bot github-actions se ci sono modifiche]
+    F --> A[artifact «PEC_Comuni_italiani», 30 giorni]
+    M --> S[riepilogo nella pagina dell'esecuzione]
+```
+
+Corrispondenze con lo userscript (stessi nomi): `RISORSE`, `urlDump`, `pulisci`, `isPec`, `isIndirizzo`, `campo`, `scaricaTesto` (in Node con 3 tentativi), `leggiRisorsa`, `leggiAmministrazioni`. `avvia()` diventa `main()`. Al posto del download nel browser scrive i file in `dati/` e, se presente, aggiunge il riepilogo in `GITHUB_STEP_SUMMARY`. L'origine dei dati si può cambiare con la variabile d'ambiente `IPA_ORIGINE` (predefinita `https://indicepa.gov.it`).

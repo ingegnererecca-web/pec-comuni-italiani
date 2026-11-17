@@ -3,12 +3,17 @@
 File di sincronizzazione per chi collabora al progetto con la propria istanza di Claude. Leggilo prima di modificare il codice e aggiornalo quando cambia qualcosa di rilevante.
 
 ## Scopo
-Userscript Tampermonkey (`pec-comuni-italiani.user.js`) che, eseguito su `indicepa.gov.it`, scarica gli Open Data di IndicePA e produce un Excel con le PEC di tutti i Comuni italiani (ente, AOO, UO).
+Scaricare gli Open Data di IndicePA e produrre un Excel con le PEC di tutti i Comuni italiani (ente, AOO, UO). Due versioni con la stessa logica:
+- userscript Tampermonkey (`pec-comuni-italiani.user.js`), eseguito su `indicepa.gov.it`;
+- script Node (`scripts/estrai-pec.mjs`), eseguito da GitHub Actions **solo a mano** (`workflow_dispatch`), che salva l'Excel in `dati/`.
 
 ## Struttura del repository
 | File | Ruolo |
 |---|---|
-| `pec-comuni-italiani.user.js` | Lo script (unico file di codice) |
+| `pec-comuni-italiani.user.js` | Userscript Tampermonkey |
+| `scripts/estrai-pec.mjs` | Stessa logica in Node 20 (fetch globale, pacchetto `xlsx`) |
+| `.github/workflows/estrai-pec.yml` | Workflow manuale: esegue lo script Node, salva `dati/` con un commit del bot, allega l'Excel come artifact |
+| `dati/PEC_Comuni_italiani.xlsx`, `dati/riepilogo.md` | Risultato dell'ultima estrazione (generati, non modificare a mano) |
 | `README.md` | Istruzioni per gli utenti |
 | `CLAUDE.md` | Questo file: contesto e regole per le istanze di Claude |
 | `GRAPH.md` | Grafo del codice: flusso, chi chiama chi, indice delle funzioni con numeri di riga, strutture dati |
@@ -34,10 +39,13 @@ Userscript Tampermonkey (`pec-comuni-italiani.user.js`) che, eseguito su `indice
 - Repository: https://github.com/ingegnererecca-web/pec-comuni-italiani (pubblico, ramo `main`).
 - A ogni modifica del codice aumenta `@version` (gli utenti si aggiornano tramite `@updateURL`).
 - Accesso ai campi sempre con `campo(oggetto, 'Nome')` (indipendente da maiuscole/minuscole): IndicePA può cambiare l'intestazione delle colonne.
-- Prima di pubblicare: `node --check pec-comuni-italiani.user.js`.
+- Prima di pubblicare: `node --check pec-comuni-italiani.user.js` e `node --check scripts/estrai-pec.mjs`.
+- **Le due versioni vanno tenute allineate**: una modifica alla logica (filtri, campi, fogli Excel) va fatta in entrambi i file nello stesso commit.
+- Il workflow parte solo a mano: non aggiungere `schedule` o altri trigger senza che l'utente lo chieda.
 - Per orientarsi nel codice leggi prima `GRAPH.md`; se aggiungi, sposti o rinomini funzioni, aggiorna `GRAPH.md` nello stesso commit.
 
 ## Stato
+- Workflow GitHub Actions manuale aggiunto (17/11/2026); prima esecuzione da verificare.
 - v1.0.0: prima versione. La logica è stata provata con dati di esempio che riproducono le colonne dei dataset; la prima esecuzione sui dati reali va verificata (conteggio comuni atteso circa 7.900).
 
 ## Da fare
