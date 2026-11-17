@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PEC dei Comuni italiani – estrazione da IndicePA
+// @name         PEC dei Comuni e delle Scuole italiane – estrazione da IndicePA
 // @namespace    https://github.com/ingegnererecca-web/pec-comuni-italiani
-// @version      1.0.0
-// @description  Scarica gli Open Data ufficiali di IndicePA (AgID) e produce un file Excel con le PEC di tutti i Comuni italiani: domicilio digitale dell'ente, dei protocolli (AOO) e degli uffici (UO).
+// @version      1.1.0
+// @description  Scarica gli Open Data ufficiali di IndicePA (AgID) e produce due file Excel: PEC di tutti i Comuni e di tutte le Scuole statali italiane (ente, protocolli/AOO, uffici/UO).
 // @author       ingegnererecca-web
 // @match        https://indicepa.gov.it/*
 // @match        https://www.indicepa.gov.it/*
@@ -17,15 +17,14 @@
 /*
   USO
   1. Apri https://indicepa.gov.it (qualsiasi pagina del sito).
-  2. In basso a destra premi "Estrai PEC dei Comuni".
-  3. Lo script scarica dagli Open Data di IndicePA i dataset ufficiali (Enti, Domicili digitali,
-     Domicili digitali delle UO, Unità Organizzative, Amministrazioni), tiene solo i Comuni e
-     scarica il file "PEC_Comuni_italiani_<data>.xlsx" con tre fogli:
-       - Comuni:    una riga per comune, con il domicilio digitale principale;
-       - PEC:       una riga per ogni indirizzo PEC (ente, protocollo/AOO, uffici/UO);
-       - Riepilogo: fonti, data, conteggi.
+  2. In basso a destra premi "Estrai PEC (Comuni e Scuole)".
+  3. Lo script scarica gli Open Data di IndicePA (Enti, Domicili digitali, Domicili digitali delle UO,
+     Unità Organizzative, Amministrazioni) e scarica due file Excel:
+       - PEC_Comuni_italiani_<data>.xlsx  (fogli Comuni, PEC, Riepilogo)
+       - PEC_Scuole_italiane_<data>.xlsx  (fogli Scuole, PEC, Riepilogo)
   Lo script legge soltanto dati pubblici: non invia nulla e non scrive su IndicePA.
   I dati sono di IndicePA (AgID): riportarne sempre la fonte.
+  La stessa logica è in scripts/estrai-pec.mjs (versione GitHub Actions): tenere allineati i due file.
 */
 
 (function () {
@@ -33,43 +32,78 @@
 
   // ---------------- risorse Open Data IndicePA ----------------
   const RISORSE = {
-    enti:          { id: 'd09adf99-dc10-4349-8c53-27b1e5aa97b6', nome: 'Enti' },
-    domicili:      { id: '0226284e-27e5-4fdd-8bf9-4deba9f4d239', nome: 'Domicili digitali (ente e AOO)' },
-    domiciliUO:    { id: 'c306c72c-77ab-4f37-8a3a-6f7888979003', nome: 'Domicili digitali delle Unità Organizzative' },
-    uo:            { id: 'b0aa1f6c-f135-4c8a-b416-396fed4e1a5d', nome: 'Unità Organizzative' },
+    enti:       { id: 'd09adf99-dc10-4349-8c53-27b1e5aa97b6', nome: 'Enti' },
+    domicili:   { id: '0226284e-27e5-4fdd-8bf9-4deba9f4d239', nome: 'Domicili digitali (ente e AOO)' },
+    domiciliUO: { id: 'c306c72c-77ab-4f37-8a3a-6f7888979003', nome: 'Domicili digitali delle Unità Organizzative' },
+    uo:         { id: 'b0aa1f6c-f135-4c8a-b416-396fed4e1a5d', nome: 'Unità Organizzative' },
   };
   const AMMINISTRAZIONI_TXT = '/ipa-dati/dataset/502ff370-1b2c-4310-94c7-f39ceb7500e3/resource/3ed63523-ff9c-41f6-a6fe-980f3d9e501f/download/amministrazioni.txt';
-  const urlDump = id => `${location.origin}/ipa-dati/datastore/dump/${id}?format=json`;
+  const ORIGINE = location.origin;
+  const urlDump = id => `${ORIGINE}/ipa-dati/datastore/dump/${id}?format=json`;
 
   // ---------------- interfaccia ----------------
   const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647;background:#fff;border:1px solid #0b4f8a;border-radius:8px;padding:10px 12px;font:13px Arial,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.25);max-width:340px;color:#222';
+  box.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647;background:#fff;border:1px solid #0b4f8a;border-radius:8px;padding:10px 12px;font:13px Arial,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.25);max-width:360px;color:#222';
   const btn = document.createElement('button');
-  btn.textContent = 'Estrai PEC dei Comuni';
+  btn.textContent = 'Estrai PEC (Comuni e Scuole)';
   btn.style.cssText = 'background:#0b4f8a;color:#fff;border:0;border-radius:5px;padding:8px 12px;cursor:pointer;font-weight:bold';
-  const btnFile = document.createElement('button');
-  btnFile.textContent = 'Scarica di nuovo il file Excel';
-  btnFile.style.cssText = 'margin-top:6px;background:#1f4e79;color:#fff;border:0;border-radius:5px;padding:6px 10px;cursor:pointer;display:none';
+  const riga2 = document.createElement('div');
   const stato = document.createElement('div');
   stato.style.cssText = 'margin-top:6px;white-space:pre-line';
-  box.append(btn, document.createElement('br'), btnFile, stato);
+  box.append(btn, riga2, stato);
   document.body.appendChild(box);
-  const log = t => { stato.textContent = t; console.log('[PEC Comuni]', t); };
+  const log = t => { stato.textContent = t; console.log('[PEC]', t); };
 
-  let fileExcel = null;
   function scarica(f) {
     const url = URL.createObjectURL(f.blob);
     const a = document.createElement('a');
     a.href = url; a.download = f.nome; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
-  btnFile.addEventListener('click', () => fileExcel && scarica(fileExcel));
+  function pulsanteFile(f, testo) {
+    const b = document.createElement('button');
+    b.textContent = testo;
+    b.style.cssText = 'margin:6px 6px 0 0;background:#1f4e79;color:#fff;border:0;border-radius:5px;padding:6px 10px;cursor:pointer';
+    b.addEventListener('click', () => scarica(f));
+    riga2.appendChild(b);
+  }
   btn.addEventListener('click', () => avvia().catch(e => { log('Errore: ' + e.message); btn.disabled = false; }));
 
   // ---------------- utilità ----------------
-  const pulisci = s => (s == null ? '' : String(s)).replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+  const pulisci = s => (s == null ? '' : String(s)).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
   const isPec = tipo => /pec/i.test(pulisci(tipo));
   const isIndirizzo = s => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(pulisci(s));
+  const campo = (o, ...nomi) => {
+    for (const n of nomi) {
+      if (o[n] != null) return pulisci(o[n]);
+      const k = Object.keys(o).find(x => x.toLowerCase() === n.toLowerCase());
+      if (k && o[k] != null) return pulisci(o[k]);
+    }
+    return '';
+  };
+
+  // ---------------- categorie di enti (stessa definizione di scripts/estrai-pec.mjs) ----------------
+  const CATEGORIE = [
+    {
+      chiave: 'comuni', titolo: 'PEC dei Comuni italiani', nomeFile: 'PEC_Comuni_italiani.xlsx', foglio: 'Comuni', etichetta: 'Comuni',
+      filtro: e => campo(e, 'Codice_Categoria') === 'L6' && (/^c_[a-z]\d{3}$/i.test(campo(e, 'Codice_IPA')) || /^comune di /i.test(campo(e, 'Denominazione_ente'))),
+      nome: (e, a) => (a && a.comune) || campo(e, 'Denominazione_ente').replace(/^comune di\s+/i, ''),
+      intestazione: ['Comune', 'Provincia', 'Regione', 'Codice ISTAT', 'Codice catastale', 'Codice IPA', 'Codice fiscale', 'Domicilio digitale principale', 'N. indirizzi PEC', 'Sito istituzionale'],
+      riga: s => [s.nome, s.provincia, s.regione, s.istat, s.catastale, s.ipa, s.cf, s.domicilio, s.pec.length, s.sito],
+      larghezze: [28, 9, 22, 12, 10, 10, 13, 40, 9, 40],
+    },
+    {
+      chiave: 'scuole', titolo: 'PEC delle Scuole statali italiane', nomeFile: 'PEC_Scuole_italiane.xlsx', foglio: 'Scuole', etichetta: 'Scuole',
+      // istituti scolastici statali: hanno il codice meccanografico del Ministero (Codice_MIUR)
+      filtro: e => campo(e, 'Codice_MIUR') !== '',
+      nome: (e) => campo(e, 'Denominazione_ente'),
+      intestazione: ['Istituto', 'Codice meccanografico', 'Comune', 'Provincia', 'Regione', 'Codice ISTAT comune', 'Codice IPA', 'Codice fiscale', 'Domicilio digitale principale', 'N. indirizzi PEC', 'Sito istituzionale'],
+      riga: s => [s.nome, s.miur, s.comune, s.provincia, s.regione, s.istat, s.ipa, s.cf, s.domicilio, s.pec.length, s.sito],
+      larghezze: [45, 14, 24, 9, 22, 12, 16, 13, 40, 9, 40],
+    },
+  ];
+  const LIVELLI = ['Ente – domicilio digitale', 'AOO – domicilio digitale', 'UO – domicilio digitale', 'Ente – casella PEC', 'UO – casella PEC'];
+
 
   // scarica un testo mostrando l'avanzamento in MB
   async function scaricaTesto(url, etichetta) {
@@ -93,35 +127,21 @@
   async function leggiRisorsa(chiave) {
     const ris = RISORSE[chiave];
     log(`Scarico «${ris.nome}»…`);
-    const testo = await scaricaTesto(urlDump(ris.id), ris.nome);
-    const j = JSON.parse(testo);
+    const j = JSON.parse(await scaricaTesto(urlDump(ris.id), ris.nome));
     const campi = (j.fields || []).map(f => f.id);
     const righe = (j.records || []).map(rec => Array.isArray(rec) ? Object.fromEntries(campi.map((c, i) => [c, rec[i]])) : rec);
     log(`«${ris.nome}»: ${righe.length} righe.`);
     return righe;
   }
 
-  // accesso ai campi senza dipendere da maiuscole/minuscole
-  const campo = (o, ...nomi) => {
-    for (const n of nomi) {
-      if (o[n] != null) return pulisci(o[n]);
-      const k = Object.keys(o).find(x => x.toLowerCase() === n.toLowerCase());
-      if (k && o[k] != null) return pulisci(o[k]);
-    }
-    return '';
-  };
-
-  // amministrazioni.txt: file di testo con separatore (di norma tabulazione) e riga di intestazione
+  // amministrazioni.txt: provincia e regione (separatore di norma tabulazione)
   async function leggiAmministrazioni() {
     try {
-      const testo = await scaricaTesto(location.origin + AMMINISTRAZIONI_TXT, 'Amministrazioni');
-      const righe = testo.split(/\r?\n/).filter(Boolean);
+      const righe = (await scaricaTesto(ORIGINE + AMMINISTRAZIONI_TXT, 'Amministrazioni')).split(/\r?\n/).filter(Boolean);
       const sep = righe[0].includes('\t') ? '\t' : (righe[0].includes(';') ? ';' : ',');
       const intest = righe[0].split(sep).map(pulisci);
-      const iCod = intest.findIndex(h => /^cod_amm$/i.test(h));
-      const iCom = intest.findIndex(h => /^comune$/i.test(h));
-      const iPro = intest.findIndex(h => /^provincia$/i.test(h));
-      const iReg = intest.findIndex(h => /^regione$/i.test(h));
+      const i = re => intest.findIndex(h => re.test(h));
+      const [iCod, iCom, iPro, iReg] = [i(/^cod_amm$/i), i(/^comune$/i), i(/^provincia$/i), i(/^regione$/i)];
       const mappa = new Map();
       if (iCod < 0) return mappa;
       for (const r of righe.slice(1)) {
@@ -130,130 +150,103 @@
       }
       return mappa;
     } catch (e) {
-      console.warn('[PEC Comuni] amministrazioni.txt non letto:', e);
+      console.warn('[PEC] amministrazioni.txt non letto:', e);
       return new Map();
     }
   }
 
-  // ---------------- elaborazione ----------------
-  async function avvia() {
-    btn.disabled = true; btnFile.style.display = 'none';
-    const t0 = Date.now();
-
-    // 1) Enti: si tengono solo i Comuni
-    const enti = await leggiRisorsa('enti');
-    const comuni = new Map();   // codice IPA (minuscolo) -> scheda
-    for (const e of enti) {
+  // ---------------- elaborazione di una categoria ----------------
+  function elabora(cat, d) {
+    // 1) enti della categoria
+    const enti = new Map();
+    for (const e of d.enti) {
+      if (!cat.filtro(e)) continue;
       const ipa = campo(e, 'Codice_IPA');
-      const den = campo(e, 'Denominazione_ente');
-      const cat = campo(e, 'Codice_Categoria');
-      const eComune = cat === 'L6' && (/^c_[a-z]\d{3}$/i.test(ipa) || /^comune di /i.test(den));
-      if (!eComune) continue;
-      comuni.set(ipa.toLowerCase(), {
-        ipa, denominazione: den, cf: campo(e, 'Codice_fiscale_ente'),
-        istat: campo(e, 'Codice_comune_ISTAT'), catastale: campo(e, 'Codice_catastale_comune'),
-        sito: campo(e, 'Sito_istituzionale'), comune: den.replace(/^comune di\s+/i, ''),
-        provincia: '', regione: '', domicilio: '', pec: [],
+      const a = d.amm.get(ipa.toLowerCase());
+      enti.set(ipa.toLowerCase(), {
+        ipa, nome: cat.nome(e, a), cf: campo(e, 'Codice_fiscale_ente'), miur: campo(e, 'Codice_MIUR'),
+        istat: campo(e, 'Codice_comune_ISTAT'), catastale: campo(e, 'Codice_catastale_comune'), sito: campo(e, 'Sito_istituzionale'),
+        comune: a ? a.comune : '', provincia: a ? a.provincia : '', regione: a ? a.regione : '',
+        domicilio: '', pec: [],
         mailEnte: [1, 2, 3, 4, 5].map(n => ({ m: campo(e, 'Mail' + n), t: campo(e, 'Tipo_Mail' + n) })),
       });
     }
-    if (!comuni.size) throw new Error('nessun comune trovato nel dataset Enti (il formato potrebbe essere cambiato)');
-    log(`Comuni trovati: ${comuni.size}.`);
+    if (!enti.size) throw new Error(`nessun ente trovato per «${cat.etichetta}» (il formato del dataset Enti potrebbe essere cambiato)`);
+    log(`${cat.etichetta}: ${enti.size}`);
 
-    // 2) provincia e regione
-    const amm = await leggiAmministrazioni();
-    for (const c of comuni.values()) {
-      const a = amm.get(c.ipa.toLowerCase());
-      if (a) { c.provincia = a.provincia; c.regione = a.regione; if (a.comune) c.comune = a.comune; }
-    }
-
-    // 3) raccolta delle PEC, senza doppioni (per comune e indirizzo)
+    // 2) PEC senza doppioni
     const visti = new Set();
-    const aggiungi = (c, r) => {
+    const aggiungi = (s, r) => {
       const pec = pulisci(r.pec).toLowerCase();
       if (!isIndirizzo(pec)) return;
-      const k = c.ipa + '|' + pec;
+      const k = s.ipa + '|' + pec;
       if (visti.has(k)) return;
       visti.add(k);
-      c.pec.push({ ...r, pec });
+      s.pec.push({ ...r, pec });
     };
-
-    // 3a) domicili digitali dell'ente e dei protocolli (AOO)
-    for (const d of await leggiRisorsa('domicili')) {
-      const c = comuni.get(campo(d, 'Codice_IPA').toLowerCase());
-      if (!c) continue;
-      const aoo = campo(d, 'Codice_uni_aoo');
-      const r = { livello: aoo ? 'AOO – domicilio digitale' : 'Ente – domicilio digitale', ufficio: aoo ? campo(d, 'Descrizione_aoo') : 'Ente', codiceUfficio: aoo,
-        pec: campo(d, 'Domicilio_digitale'), tipo: campo(d, 'Tipo_domicilio_digitale') || 'PEC', data: campo(d, 'Data_pubblicazione'), fonte: RISORSE.domicili.nome };
-      if (!aoo && !c.domicilio) c.domicilio = pulisci(r.pec).toLowerCase();
-      aggiungi(c, r);
+    for (const x of d.domicili) {           // domicili ente e AOO
+      const s = enti.get(campo(x, 'Codice_IPA').toLowerCase());
+      if (!s) continue;
+      const aoo = campo(x, 'Codice_uni_aoo');
+      const r = { livello: aoo ? LIVELLI[1] : LIVELLI[0], ufficio: aoo ? campo(x, 'Descrizione_aoo') : 'Ente', codiceUfficio: aoo,
+        pec: campo(x, 'Domicilio_digitale'), tipo: campo(x, 'Tipo_domicilio_digitale') || 'PEC', data: campo(x, 'Data_pubblicazione'), fonte: RISORSE.domicili.nome };
+      if (!aoo && !s.domicilio) s.domicilio = pulisci(r.pec).toLowerCase();
+      aggiungi(s, r);
     }
-
-    // domicilio principale: in IPA spesso è registrato sull'AOO ("Domicilio digitale del Comune di …")
-    for (const c of comuni.values()) {
-      if (c.domicilio) continue;
-      const aoo = c.pec.filter(p => p.livello === 'AOO – domicilio digitale');
+    for (const s of enti.values()) {        // domicilio principale registrato sull'AOO
+      if (s.domicilio) continue;
+      const aoo = s.pec.filter(p => p.livello === LIVELLI[1]);
       const p = aoo.find(x => /domicilio digitale/i.test(x.ufficio)) || aoo[0];
-      if (p) c.domicilio = p.pec;
+      if (p) s.domicilio = p.pec;
     }
-
-    // 3b) domicili digitali degli uffici (UO)
-    for (const d of await leggiRisorsa('domiciliUO')) {
-      const c = comuni.get(campo(d, 'Codice_IPA').toLowerCase());
-      if (!c) continue;
-      aggiungi(c, { livello: 'UO – domicilio digitale', ufficio: campo(d, 'Descrizione_uo', 'Descrizione_ufficio'), codiceUfficio: campo(d, 'Codice_uni_uo'),
-        pec: campo(d, 'Domicilio_digitale'), tipo: campo(d, 'Tipo_domicilio_digitale') || 'PEC', data: campo(d, 'Data_pubblicazione'), fonte: RISORSE.domiciliUO.nome });
+    for (const x of d.domiciliUO) {         // domicili UO
+      const s = enti.get(campo(x, 'Codice_IPA').toLowerCase());
+      if (!s) continue;
+      aggiungi(s, { livello: LIVELLI[2], ufficio: campo(x, 'Descrizione_uo', 'Descrizione_ufficio'), codiceUfficio: campo(x, 'Codice_uni_uo'),
+        pec: campo(x, 'Domicilio_digitale'), tipo: campo(x, 'Tipo_domicilio_digitale') || 'PEC', data: campo(x, 'Data_pubblicazione'), fonte: RISORSE.domiciliUO.nome });
     }
-
-    // 3c) caselle PEC indicate nella scheda dell'ente
-    for (const c of comuni.values()) {
-      c.mailEnte.filter(x => isPec(x.t)).forEach(x => aggiungi(c, { livello: 'Ente – casella PEC', ufficio: 'Ente', codiceUfficio: '', pec: x.m, tipo: 'PEC', data: '', fonte: RISORSE.enti.nome }));
-      if (!c.domicilio) { const p = c.mailEnte.find(x => isPec(x.t) && isIndirizzo(x.m)); if (p) c.domicilio = p.m.toLowerCase(); }
+    for (const s of enti.values()) {        // PEC della scheda ente
+      s.mailEnte.filter(x => isPec(x.t)).forEach(x => aggiungi(s, { livello: LIVELLI[3], ufficio: 'Ente', codiceUfficio: '', pec: x.m, tipo: 'PEC', data: '', fonte: RISORSE.enti.nome }));
+      if (!s.domicilio) { const p = s.mailEnte.find(x => isPec(x.t) && isIndirizzo(x.m)); if (p) s.domicilio = p.m.toLowerCase(); }
     }
-
-    // 3d) caselle PEC dei singoli uffici (UO)
-    for (const u of await leggiRisorsa('uo')) {
-      const c = comuni.get(campo(u, 'Codice_IPA').toLowerCase());
-      if (!c) continue;
+    for (const u of d.uo) {                 // PEC degli uffici
+      const s = enti.get(campo(u, 'Codice_IPA').toLowerCase());
+      if (!s) continue;
       for (const n of [1, 2, 3]) {
         if (!isPec(campo(u, 'Tipo_Mail' + n))) continue;
-        aggiungi(c, { livello: 'UO – casella PEC', ufficio: campo(u, 'Descrizione_uo'), codiceUfficio: campo(u, 'Codice_uni_uo'),
+        aggiungi(s, { livello: LIVELLI[4], ufficio: campo(u, 'Descrizione_uo'), codiceUfficio: campo(u, 'Codice_uni_uo'),
           pec: campo(u, 'Mail' + n), tipo: 'PEC', data: '', fonte: RISORSE.uo.nome });
       }
     }
 
-    // 4) file Excel
-    log('Creo il file Excel…');
-    const elenco = [...comuni.values()].sort((a, b) =>
-      (a.regione || '~').localeCompare(b.regione || '~', 'it') || (a.provincia || '~').localeCompare(b.provincia || '~', 'it') || a.comune.localeCompare(b.comune, 'it'));
-    const oggi = new Date();
-    const dataIt = oggi.toLocaleDateString('it-IT');
-
-    const shComuni = [['Comune', 'Provincia', 'Regione', 'Codice ISTAT', 'Codice catastale', 'Codice IPA', 'Codice fiscale', 'Domicilio digitale principale', 'N. indirizzi PEC', 'Sito istituzionale'],
-      ...elenco.map(c => [c.comune, c.provincia, c.regione, c.istat, c.catastale, c.ipa, c.cf, c.domicilio, c.pec.length, c.sito])];
-    const shPec = [['Comune', 'Provincia', 'Regione', 'Codice IPA', 'Livello', 'Ufficio', 'Codice ufficio', 'Indirizzo PEC', 'Tipo', 'Data pubblicazione', 'Fonte (dataset IndicePA)']];
-    elenco.forEach(c => c.pec.forEach(p => shPec.push([c.comune, c.provincia, c.regione, c.ipa, p.livello, p.ufficio, p.codiceUfficio, p.pec, p.tipo, p.data, p.fonte])));
-
+    // 3) Excel
+    const elenco = [...enti.values()].sort((a, b) =>
+      (a.regione || '~').localeCompare(b.regione || '~', 'it') || (a.provincia || '~').localeCompare(b.provincia || '~', 'it')
+      || (a.comune || '').localeCompare(b.comune || '', 'it') || a.nome.localeCompare(b.nome, 'it'));
+    const dataIt = new Date().toLocaleDateString('it-IT', );
+    const shEnti = [cat.intestazione, ...elenco.map(cat.riga)];
+    const shPec = [[cat.etichetta === 'Comuni' ? 'Comune' : 'Istituto', 'Provincia', 'Regione', 'Codice IPA', 'Livello', 'Ufficio', 'Codice ufficio', 'Indirizzo PEC', 'Tipo', 'Data pubblicazione', 'Fonte (dataset IndicePA)']];
+    elenco.forEach(s => s.pec.forEach(p => shPec.push([s.nome, s.provincia, s.regione, s.ipa, p.livello, p.ufficio, p.codiceUfficio, p.pec, p.tipo, p.data, p.fonte])));
     const conta = l => shPec.filter(r => r[4] === l).length;
-    const senzaDomicilio = elenco.filter(c => !c.domicilio).length;
+    const senzaDomicilio = elenco.filter(s => !s.domicilio).length;
+    const senzaRegione = elenco.filter(s => !s.regione).length;
     const shRiep = [
-      ['PEC dei Comuni italiani – estrazione da IndicePA'],
+      [cat.titolo + ' – estrazione da IndicePA'],
       ['Data estrazione', dataIt],
-      ['Fonte', 'IndicePA – Indice dei domicili digitali della PA (AgID), Open Data: ' + location.origin + '/ipa-dati/'],
+      ['Fonte', 'IndicePA – Indice dei domicili digitali della PA (AgID), Open Data: ' + ORIGINE + '/ipa-dati/'],
       [],
-      ['Comuni', elenco.length],
-      ['Comuni senza domicilio digitale principale', senzaDomicilio],
-      ['Comuni senza provincia/regione (non trovati in amministrazioni.txt)', elenco.filter(c => !c.regione).length],
+      [cat.etichetta, elenco.length],
+      [cat.etichetta + ' senza domicilio digitale principale', senzaDomicilio],
+      [cat.etichetta + ' senza provincia/regione (non trovati in amministrazioni.txt)', senzaRegione],
       ['Indirizzi PEC totali (senza doppioni)', shPec.length - 1],
-      ...['Ente – domicilio digitale', 'AOO – domicilio digitale', 'UO – domicilio digitale', 'Ente – casella PEC', 'UO – casella PEC'].map(l => ['  ' + l, conta(l)]),
+      ...LIVELLI.map(l => ['  ' + l, conta(l)]),
       [],
       ['Dataset usati'],
       ...Object.values(RISORSE).map(r => [r.nome, urlDump(r.id)]),
-      ['Amministrazioni (provincia e regione)', location.origin + AMMINISTRAZIONI_TXT],
+      ['Amministrazioni (provincia e regione)', ORIGINE + AMMINISTRAZIONI_TXT],
       [],
       ['Nota', 'Per le comunicazioni con valore legale va usato il domicilio digitale dell\'ente (art. 6-ter del D.Lgs. 82/2005, CAD). I dati sono pubblici: riportare la fonte e usarli per comunicazioni istituzionali, non per invii massivi indesiderati.'],
     ];
-
     const wb = XLSX.utils.book_new();
     const foglio = (righe, nome, larghezze) => {
       const ws = XLSX.utils.aoa_to_sheet(righe);
@@ -261,15 +254,38 @@
       if (righe.length > 1 && nome !== 'Riepilogo') ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: righe.length - 1, c: righe[0].length - 1 } }) };
       XLSX.utils.book_append_sheet(wb, ws, nome);
     };
-    foglio(shComuni, 'Comuni', [28, 9, 22, 12, 10, 10, 13, 40, 9, 40]);
-    foglio(shPec, 'PEC', [26, 9, 20, 10, 24, 40, 12, 42, 6, 12, 36]);
+    foglio(shEnti, cat.foglio, cat.larghezze);
+    foglio(shPec, 'PEC', [36, 9, 20, 16, 24, 40, 12, 42, 6, 12, 36]);
     foglio(shRiep, 'Riepilogo', [62, 90]);
     const dati = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    fileExcel = { blob: new Blob([dati], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-      nome: `PEC_Comuni_italiani_${oggi.toISOString().slice(0, 10)}.xlsx` };
-    scarica(fileExcel);
-    btnFile.style.display = 'inline-block';
+    const oggiIso = new Date().toISOString().slice(0, 10);
+    const file = { blob: new Blob([dati], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), nome: cat.nomeFile.replace('.xlsx', `_${oggiIso}.xlsx`) };
+    log(`${cat.etichetta}: ${elenco.length}, PEC ${shPec.length - 1}`);
+
+    file.sintesi = `${cat.etichetta}: ${elenco.length} (senza domicilio: ${senzaDomicilio}), PEC: ${shPec.length - 1}`;
+    return file;
+
+  }
+
+  // ---------------- avvio ----------------
+  async function avvia() {
+    btn.disabled = true; riga2.innerHTML = '';
+    const t0 = Date.now();
+    const dati = {
+      enti: await leggiRisorsa('enti'),
+      amm: await leggiAmministrazioni(),
+      domicili: await leggiRisorsa('domicili'),
+      domiciliUO: await leggiRisorsa('domiciliUO'),
+      uo: await leggiRisorsa('uo'),
+    };
+    log('Creo i file Excel…');
+    const files = CATEGORIE.map(c => elabora(c, dati));
+    for (const [i, f] of files.entries()) {
+      pulsanteFile(f, 'Scarica ' + CATEGORIE[i].etichetta);
+      scarica(f);
+      await new Promise(r => setTimeout(r, 1500));   // pausa tra i download
+    }
     btn.disabled = false;
-    log(`Fatto in ${Math.round((Date.now() - t0) / 1000)} s.\nComuni: ${elenco.length} (senza domicilio digitale: ${senzaDomicilio}).\nIndirizzi PEC: ${shPec.length - 1}.\nFile Excel scaricato.`);
+    log(`Fatto in ${Math.round((Date.now() - t0) / 1000)} s.\n${files.map(f => f.sintesi).join('\n')}\nSe un file non arriva, usa i pulsanti blu.`);
   }
 })();

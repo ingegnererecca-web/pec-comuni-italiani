@@ -1,11 +1,11 @@
-# Istruzioni per Claude – progetto «PEC dei Comuni italiani»
+# Istruzioni per Claude – progetto «PEC dei Comuni e delle Scuole italiane»
 
 File di sincronizzazione per chi collabora al progetto con la propria istanza di Claude. Leggilo prima di modificare il codice e aggiornalo quando cambia qualcosa di rilevante.
 
 ## Scopo
-Scaricare gli Open Data di IndicePA e produrre un Excel con le PEC di tutti i Comuni italiani (ente, AOO, UO). Due versioni con la stessa logica:
+Scaricare gli Open Data di IndicePA e produrre due Excel: PEC di tutti i Comuni e di tutte le Scuole statali italiane (ente, AOO, UO). Le categorie sono definite in `CATEGORIE`. Due versioni con la stessa logica:
 - userscript Tampermonkey (`pec-comuni-italiani.user.js`), eseguito su `indicepa.gov.it`;
-- script Node (`scripts/estrai-pec.mjs`), eseguito da GitHub Actions **solo a mano** (`workflow_dispatch`), che salva l'Excel in `dati/`.
+- script Node (`scripts/estrai-pec.mjs`), eseguito da GitHub Actions **solo a mano** (`workflow_dispatch`), che salva gli Excel in `dati/`.
 
 ## Struttura del repository
 | File | Ruolo |
@@ -13,24 +13,20 @@ Scaricare gli Open Data di IndicePA e produrre un Excel con le PEC di tutti i Co
 | `pec-comuni-italiani.user.js` | Userscript Tampermonkey |
 | `scripts/estrai-pec.mjs` | Stessa logica in Node 20 (fetch globale, pacchetto `xlsx`) |
 | `.github/workflows/estrai-pec.yml` | Workflow manuale: esegue lo script Node, salva `dati/` con un commit del bot, allega l'Excel come artifact |
-| `dati/PEC_Comuni_italiani.xlsx`, `dati/riepilogo.md` | Risultato dell'ultima estrazione (generati, non modificare a mano) |
+| `dati/PEC_Comuni_italiani.xlsx`, `dati/PEC_Scuole_italiane.xlsx`, `dati/riepilogo.md` | Risultato dell'ultima estrazione (generati, non modificare a mano) |
 | `README.md` | Istruzioni per gli utenti |
 | `CLAUDE.md` | Questo file: contesto e regole per le istanze di Claude |
 | `GRAPH.md` | Grafo del codice: flusso, chi chiama chi, indice delle funzioni con numeri di riga, strutture dati |
 
 ## Come funziona lo script
-1. Pulsante fisso in basso a destra su ogni pagina di `indicepa.gov.it`.
-2. `leggiRisorsa()` scarica i dump JSON CKAN `/ipa-dati/datastore/dump/<resource_id>?format=json` (formato `{fields:[{id}], records:[[…]]}`) con la stessa origine della pagina, senza permessi aggiuntivi.
-3. Risorse (costante `RISORSE`):
-   - Enti `d09adf99-dc10-4349-8c53-27b1e5aa97b6`
-   - Domicili digitali (ente e AOO) `0226284e-27e5-4fdd-8bf9-4deba9f4d239`
-   - Domicili digitali delle UO `c306c72c-77ab-4f37-8a3a-6f7888979003`
-   - Unità Organizzative `b0aa1f6c-f135-4c8a-b416-396fed4e1a5d`
-   - `amministrazioni.txt` (provincia e regione, unito per `cod_amm` = `Codice_IPA`)
-4. Filtro Comuni: `Codice_Categoria === 'L6'` e (`Codice_IPA` tipo `c_a267` oppure denominazione «Comune di …»).
-5. Raccolta PEC con priorità: domicilio ente → domicilio AOO → domicilio UO → Mail PEC dell'ente → Mail PEC delle UO. Doppioni eliminati per coppia (codice IPA, indirizzo).
-6. Domicilio principale: domicilio a livello ente; se manca, AOO la cui descrizione contiene «domicilio digitale», poi la prima AOO, poi la prima PEC dell'ente.
-7. Excel con SheetJS (`xlsx@0.18.5` via `@require`): fogli Comuni, PEC, Riepilogo.
+Dettagli e numeri di riga in `GRAPH.md`. In sintesi:
+1. `avvia()` (userscript) / `main()` (Node) scaricano **una sola volta** i dati: Enti, `amministrazioni.txt`, Domicili digitali (ente/AOO), Domicili digitali UO, Unità Organizzative (ID in `RISORSE`, dump JSON CKAN `/ipa-dati/datastore/dump/<id>?format=json`).
+2. Per ogni voce di `CATEGORIE` si chiama `elabora(cat, dati)`:
+   - **Comuni**: `Codice_Categoria === 'L6'` e (`Codice_IPA` tipo `c_a267` oppure «Comune di …»);
+   - **Scuole**: `Codice_MIUR` presente (istituti statali).
+3. Raccolta PEC con priorità: domicilio ente → domicilio AOO → domicilio UO → Mail PEC dell'ente → Mail PEC delle UO. Doppioni eliminati per coppia (codice IPA, indirizzo).
+4. Domicilio principale: livello ente; se manca, l'AOO con «domicilio digitale» nella descrizione, poi la prima AOO, poi la prima PEC dell'ente.
+5. Excel con SheetJS (`xlsx@0.18.5`): foglio dell'ente (Comuni/Scuole), PEC, Riepilogo.
 
 ## Regole del progetto
 - Lingua: italiano (interfaccia, commenti, documentazione).
@@ -45,8 +41,10 @@ Scaricare gli Open Data di IndicePA e produrre un Excel con le PEC di tutti i Co
 - Per orientarsi nel codice leggi prima `GRAPH.md`; se aggiungi, sposti o rinomini funzioni, aggiorna `GRAPH.md` nello stesso commit.
 
 ## Stato
-- Workflow GitHub Actions manuale aggiunto (17/11/2026); prima esecuzione da verificare.
-- v1.0.0: prima versione. La logica è stata provata con dati di esempio che riproducono le colonne dei dataset; la prima esecuzione sui dati reali va verificata (conteggio comuni atteso circa 7.900).
+- v1.1.0 (17/11/2026): aggiunte le Scuole statali (`Codice_MIUR`), file `PEC_Scuole_italiane.xlsx`; codice unificato con `CATEGORIE` + `elabora()`. Prima estrazione delle scuole da verificare.
+- Prima estrazione reale dei Comuni (17/11/2026, workflow): 7.893 comuni, tutti con domicilio digitale, 19.167 PEC. 0 domicili a livello UO: da verificare se è un dato reale o un nome di colonna diverso.
+- v1.0.0: prima versione (solo Comuni) e workflow GitHub Actions manuale.
 
 ## Da fare
-- Verificare la prima esecuzione sui dati reali.
+- Verificare la prima estrazione delle Scuole (atteso: circa 8.000 istituti statali).
+- Verificare i domicili digitali delle UO (colonne del dataset).

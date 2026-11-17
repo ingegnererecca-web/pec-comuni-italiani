@@ -1,6 +1,6 @@
-name: Estrai PEC dei Comuni
+name: Estrai PEC dei Comuni e delle Scuole
 
-# Parte solo a mano: scheda «Actions» → «Estrai PEC dei Comuni» → «Run workflow».
+# Parte solo a mano: scheda «Actions» → «Estrai PEC dei Comuni e delle Scuole» → «Run workflow».
 on:
   workflow_dispatch:
 
@@ -34,17 +34,19 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
-          git add dati/PEC_Comuni_italiani.xlsx dati/riepilogo.md
+          git add dati/PEC_Comuni_italiani.xlsx dati/PEC_Scuole_italiane.xlsx dati/riepilogo.md
           if git diff --cached --quiet; then
             echo "Nessuna modifica rispetto all'ultima estrazione."
           else
-            git commit -m "Estrazione PEC dei Comuni del $(TZ=Europe/Rome date +%d/%m/%Y)"
+            git commit -m "Estrazione PEC di Comuni e Scuole del $(TZ=Europe/Rome date +%d/%m/%Y)"
             git push
           fi
 
-      - name: Allega il file Excel all'esecuzione
+      - name: Allega i file Excel all'esecuzione
         uses: actions/upload-artifact@v4
         with:
-          name: PEC_Comuni_italiani
-          path: dati/PEC_Comuni_italiani.xlsx
+          name: PEC_Comuni_e_Scuole
+          path: |
+            dati/PEC_Comuni_italiani.xlsx
+            dati/PEC_Scuole_italiane.xlsx
           retention-days: 30
